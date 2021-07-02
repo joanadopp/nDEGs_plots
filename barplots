@@ -1,0 +1,156 @@
+DATA_DIR <- "/Users/Joana/sleep_signature/analysis/volcanoes/FullSequencing_Wilcoxon_DEs_20201216/"
+list.files(DATA_DIR)
+setwd(DATA_DIR)
+
+library(readxl)
+library(data.table)
+library(tidyverse)
+library(lemon)
+
+#read in excel sheets DEGs, separate df for each sheet
+comp1 <- excel_sheets(c1)
+comp1_sheets <- lapply(comp1, function(x) read_excel(c1, sheet = x))
+names(comp1_sheets) <- comp1
+
+comp2 <- excel_sheets(c2)
+comp2_sheets <- lapply(comp2, function(x) read_excel(c2, sheet = x))
+names(comp2_sheets) <- comp2
+
+comp3 <- excel_sheets(c3)
+comp3_sheets <- lapply(comp3, function(x) read_excel(c3, sheet = x))
+names(comp3_sheets) <- comp3
+
+comp4 <- excel_sheets(c4)
+comp4_sheets <- lapply(comp4, function(x) read_excel(c4, sheet = x))
+names(comp4_sheets) <- comp4
+
+comp5 <- excel_sheets(c5)
+comp5_sheets <- lapply(comp5, function(x) read_excel(c5, sheet = x))
+names(comp5_sheets) <- comp5
+
+#rbind all sheets (clusters) into one dt
+comp1 <- bind_rows(comp1_sheets, .id = "cluster")
+comp2 <- bind_rows(comp2_sheets, .id = "cluster")
+comp3 <- bind_rows(comp3_sheets, .id = "cluster")
+comp4 <- bind_rows(comp4_sheets, .id = "cluster")
+comp5 <- bind_rows(comp5_sheets, .id = "cluster")
+
+#rbind all comparisons into one massive dt
+l = list(comp1,comp2,comp3,comp4,comp5)
+setattr(l, 'names', c("comp1", "comp2", "comp3", "comp4", "comp5"))
+all_combined <- rbindlist(l, use.names = TRUE, fill = TRUE, idcol = "comparison")
+
+#remove batch effect genes
+batch_effect_genes <- read_excel("/Users/Joana/sleep_signature/analysis/volcanoes/batch_effects.xlsx", sheet = "line")
+allcombined_nobatch <- all_combined[!(all_combined$gene %in% batch_effect_genes$gene),]
+
+#rename cluster number with annotations
+allcombined_nobatch$annotation <- allcombined_nobatch$cluster 
+allcombined_nobatch$annotation[allcombined_nobatch$cluster == "Cluster 31"] <- "ALG" 
+allcombined_nobatch$annotation[allcombined_nobatch$cluster == "Cluster 17"] <- "EGN" 
+allcombined_nobatch$annotation[allcombined_nobatch$cluster == "Cluster 5"] <- "ab" 
+allcombined_nobatch$annotation[allcombined_nobatch$cluster == "Cluster 20"] <- "abp" 
+allcombined_nobatch$annotation[allcombined_nobatch$cluster == "Cluster 3"] <- "y" 
+allcombined_nobatch$annotation[allcombined_nobatch$cluster == "Cluster 68"] <- "Tyr" 
+allcombined_nobatch$annotation[allcombined_nobatch$cluster == "Cluster 78"] <- "Ser" 
+allcombined_nobatch$annotation[allcombined_nobatch$cluster == "Cluster 21"] <- "adPN" 
+allcombined_nobatch$annotation[allcombined_nobatch$cluster == "Cluster 39"] <- "T4/T5" 
+allcombined_nobatch$annotation[allcombined_nobatch$cluster == "Cluster 44"] <- "PB4/5" 
+allcombined_nobatch$annotation[allcombined_nobatch$cluster == "Cluster 62"] <- "Mi1" 
+allcombined_nobatch$annotation[allcombined_nobatch$cluster == "Cluster 72"] <- "T1" 
+allcombined_nobatch$annotation[allcombined_nobatch$cluster == "Cluster 51"] <- "CX"
+
+#select DEGs with pvalue<0.05 & logfoldchange>0.5 or logfoldchange<-0.5 and make a new variable diffexpressed
+allcombined_nobatch$diffexpressed <- "p-value > 0.05"
+allcombined_nobatch$diffexpressed[allcombined_nobatch$logfoldchange > 0.5 & allcombined_nobatch$pval_adj < 0.05] <- "UP"
+allcombined_nobatch$diffexpressed[allcombined_nobatch$logfoldchange < -0.5 & allcombined_nobatch$pval_adj < 0.05] <- "DOWN"
+
+#subset dt with pvalue<0.05 & logfoldchange>0.5 or logfoldchange<-0.5
+allcombined_nobatch_select <- subset(allcombined_nobatch, diffexpressed %in% c("UP", "DOWN"))
+
+#convert a data.frame to a data.table
+#setDT(allcombined_nobatch_select)
+class(allcombined_nobatch_select)
+
+n_DEGs <- allcombined_nobatch_select[, .(gene), by=.(annotation, comparison, diffexpressed)]
+
+n_DEGs$annotation2 <- n_DEGs$annotation
+n_DEGs$diffexpressed2 <- n_DEGs$diffexpressed
+n_DEGs$comparison2 <- n_DEGs$comparison
+
+#get a dt with a column n = the occurences
+n_DEGs <- n_DEGs[, .(`occurences` = .N), by=.(diffexpressed, comparison, annotation)]
+#setnames(n_DEGs, "Number of rows", "occurences")
+
+#change DOWN occurences to negative value
+n_DEGs$occurences <- ifelse(n_DEGs$diffexpressed == "DOWN", -n_DEGs$occurences, n_DEGs$occurences)
+table(allcombined_nobatch_select$diffexpressed)
+
+allcombined_nobatch_comp1 <- subset(allcombined_nobatch_select, comparison == "comp1")
+allcombined_nobatch_comp2 <- subset(allcombined_nobatch_select, comparison == "comp2")
+allcombined_nobatch_comp3 <- subset(allcombined_nobatch_select, comparison == "comp3")
+allcombined_nobatch_comp4 <- subset(allcombined_nobatch_select, comparison == "comp4")
+allcombined_nobatch_comp5 <- subset(allcombined_nobatch_select, comparison == "comp5")
+table(allcombined_nobatch_select$diffexpressed)
+
+x <- n_DEGs[comparison == "comp5"]
+
+cluster_ascending <- arrange(filter(x, diffexpressed=='UP'), occurences)$annotation
+cluster_ascending_index <-  1:length(cluster_ascending)
+names(cluster_ascending_index) <- cluster_ascending
+x$cluster_order <- cluster_ascending_index[x$annotation]
+
+#x <- arrange(x, -cluster_order, diffexpressed)
+
+ggplot(x, aes(x = cluster_order, y = occurences, fill = diffexpressed)) +
+  geom_col() +
+  #scale_x_continuous(cluster_ascending_index, labels = annotation) + 
+  scale_x_continuous(breaks = x$cluster_order, labels = names(cluster_ascending_index[x$cluster_order])) +
+  coord_flip() +
+  geom_hline(yintercept = 0, colour = "black") +
+  #facet_wrap(~ diffexpressed, scales = "free") +
+  #ylim(c(-350, 3)) +
+  theme(panel.spacing.x = unit(0, "pt"), 
+       strip.background = element_rect(colour = "black"))+
+  scale_fill_manual(values=c("#A6E000", "#1BB6AF", "#6C6C9D", "black")) +
+  theme_classic()
+
+ggplot(n_DEGs[comparison == "comp1" & diffexpressed == "UP"], aes(x = reorder(annotation, occurences), y = occurences, fill = diffexpressed)) +
+  geom_col() +
+  geom_hline(yintercept = 0, colour = "black") +
+  coord_flip() +
+  #facet_grid(~ diffexpressed, scales = "free_x") +
+  #scale_y_continuous(breaks = breaks, labels = names(breaks), 
+  #                 expand = c(0, 0)) +
+  theme(panel.spacing.x = unit(0, "pt"), 
+        strip.background = element_rect(colour = "black"))+
+  theme_classic() +
+  ylim(c(0, 350))
+
+# ggplot bar
+ggplot (data=allcombined_nobatch_select[comparison == "comp1"]) +
+  geom_bar(data=subset(allcombined_nobatch_select[comparison == "comp1"], diffexpressed == "DOWN"), aes(x = fct_infreq(annotation)))+
+  #geom_bar(data=subset(allcombined_nobatch_select[comparison == "comp1"], diffexpressed == "DOWN"), aes(x = annotation))+
+  coord_flip() +
+  theme_classic()
+
+ggplot(data = allcombined_nobatch_select[ID == "comp1"], 
+       mapping = aes(x = ifelse(test = diffexpressed == "UP", yes = count(diffexpressed), no = -count(diffexpressed)), 
+                     y = annotation, fill = diffexpressed)) +
+  geom_col() +
+  scale_x_symmetric(labels = abs) +
+  labs(x = "count")
+
+#correlation size cluster - amount DEGs
+ggplot(dat, aes(wt, mpg, label = car)) +
+  geom_point(aes(size = cyl), alpha = 0.6) + # data point size
+  continuous_scale(
+    aesthetics = c("size", "point.size"), scale_name = "size",
+    palette = my_pal(c(2, 15)),
+    guide = guide_legend(override.aes = list(label = "")) # hide "a" in legend
+  )
+
+#make plot with negative and positive bar for total number of up and down DEGs
+ggplot (df, aes(cell_type), stat = "identity") + 
+  geom_bar()+geom_bar(aes(y=n), 
+                      stat = "identity", fill = "Blue")
