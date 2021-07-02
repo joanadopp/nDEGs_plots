@@ -127,20 +127,6 @@ ggplot(n_DEGs[comparison == "comp1" & diffexpressed == "UP"], aes(x = reorder(an
   theme_classic() +
   ylim(c(0, 350))
 
-# ggplot bar
-ggplot (data=allcombined_nobatch_select[comparison == "comp1"]) +
-  geom_bar(data=subset(allcombined_nobatch_select[comparison == "comp1"], diffexpressed == "DOWN"), aes(x = fct_infreq(annotation)))+
-  #geom_bar(data=subset(allcombined_nobatch_select[comparison == "comp1"], diffexpressed == "DOWN"), aes(x = annotation))+
-  coord_flip() +
-  theme_classic()
-
-ggplot(data = allcombined_nobatch_select[ID == "comp1"], 
-       mapping = aes(x = ifelse(test = diffexpressed == "UP", yes = count(diffexpressed), no = -count(diffexpressed)), 
-                     y = annotation, fill = diffexpressed)) +
-  geom_col() +
-  scale_x_symmetric(labels = abs) +
-  labs(x = "count")
-
 #correlation size cluster - amount DEGs
 ggplot(dat, aes(wt, mpg, label = car)) +
   geom_point(aes(size = cyl), alpha = 0.6) + # data point size
@@ -149,8 +135,3 @@ ggplot(dat, aes(wt, mpg, label = car)) +
     palette = my_pal(c(2, 15)),
     guide = guide_legend(override.aes = list(label = "")) # hide "a" in legend
   )
-
-#make plot with negative and positive bar for total number of up and down DEGs
-ggplot (df, aes(cell_type), stat = "identity") + 
-  geom_bar()+geom_bar(aes(y=n), 
-                      stat = "identity", fill = "Blue")
